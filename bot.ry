@@ -1,0 +1,109 @@
+import os
+from datetime import datetime, timedelta
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ConversationHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+)
+
+SERVICE, DATE, TIME, NAME, PHONE = range(5)
+
+SERVICES = ["Стрижка", "Стрижка + борода", "Борода"]
+TIME_SLOTS = ["10:00", "11:00", "12:00", "13:00", "15:00", "16:00"]
+
+
+def get_dates():
+    today = datetime.now().date()
+    return [(today + timedelta(days=i)).strftime("%d.%m") for i in range(7)]
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[s] for s in SERVICES]
+    await update.message.reply_text(
+        "Выбери услугу:",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+    return SERVICE
+
+
+async def service(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["service"] = update.message.text
+
+    keyboard = [[d] for d in get_dates()]
+    await update.message.reply_text(
+        "Выбери дату:",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+    return DATE
+
+
+async def date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["date"] = update.message.text
+
+    keyboard = [[t] for t in TIME_SLOTS]
+    await update.message.reply_text(
+        "Выбери время:",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+    return TIME
+
+
+async def time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["time"] = update.message.text
+    await update.message.reply_text(
+        "Введите имя:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return NAME
+
+
+async def name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["name"] = update.message.text
+    await update.message.reply_text("Введите телефон:")
+    return PHONE
+
+
+async def phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = context.user_data
+
+    text = f"""✅ Запись:
+
+Услуга: {data["service"]}
+Дата: {data["date"]}
+Время: {data["time"]}
+Имя: {data["name"]}
+Телефон: {update.message.text}
+"""
+    await update.message.reply_text(text)
+    return ConversationHandler.END
+
+
+def main():
+    token = os.getenv("BOT_TOKEN")
+    if not token:
+        raise RuntimeError("Не задан BOT_TOKEN")
+
+    app = Application.builder().token(token).build()
+
+    conv = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            SERVICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, service)],
+            DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, date)],
+            TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, time)],
+            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, name)],
+            PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, phone)],
+        },
+        fallbacks=[]
+    )
+
+    app.add_handler(conv)
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
